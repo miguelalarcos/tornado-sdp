@@ -126,28 +126,34 @@ class SDP(tornado.websocket.WebSocketHandler):
 
     @gen.coroutine
     def feed(self, sub_id, query):
-        query = query.filter(~r.row.has_fields('deleted'))
+        #query = query.filter(~r.row.has_fields('deleted'))
+        print('ini of feed')
         conn = yield self.conn
-        feed = yield query.changes(include_initial=True).run(conn)
+        print('connection getted')
+        feed = yield query.changes(include_initial=True, include_states=True)._filter.run(conn)
         self.registered_feeds[sub_id] = feed
         while (yield feed.fetch_next()):
             item = yield feed.next()
-            if item.get('old_val') is None:
-                self.send_added(query.table, sub_id, item['new_val'])
-            elif item.get('new_val') is None:
-                self.send_removed(query.table, sub_id, item['old_val']['id'])
+            print(item)
+            state = item.get('state')
+            if state == 'ready' or state == 'initializing':
+                if state == 'ready':
+                    self.send_ready(sub_id)
             else:
-                self.send_changed(query.table, sub_id, item['new_val'])
+                if item.get('old_val') is None:
+                    self.send_added(query.table, sub_id, item['new_val'])
+                elif item.get('new_val') is None:
+                    self.send_removed(query.table, sub_id, item['old_val']['id'])
+                else:
+                    self.send_changed(query.table, sub_id, item['new_val'])
 
     def send(self, data):
         def helper(x):
             if(isinstance(x, datetime)):
-                # return json.dumps({'$date': x.timestamp()})
                 return {'$date': x.timestamp()*1000}
             else:
                 return x
         self.write_message(json.dumps(data, default=helper))
-        # self.write_message(ejson.dumps(data)) # json dumps with default
 
     def send_result(self, id, result):
         self.send({'msg': 'result', 'id': id, 'result': result})
@@ -174,7 +180,7 @@ class SDP(tornado.websocket.WebSocketHandler):
         self.send({'msg': 'nomethod', 'id': method_id, 'error': error})
 
     def on_open(self):
-        pass
+        print('open')
 
     def on_message(self, msg):
         print('raw ->', msg)
@@ -233,6 +239,7 @@ class SDP(tornado.websocket.WebSocketHandler):
               self.queue.task_done()
 
     def on_close(self):
+        print('close')
         for feed in self.registered_feeds.values():
             feed.close()
         #del sessions[self.session]

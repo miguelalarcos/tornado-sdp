@@ -1,0 +1,5 @@
+pkg-resources==0.0.0
+PyJWT==1.6.4
+pytz==2018.5
+rethinkdb==2.3.0.post6
+tornado==4.5.3

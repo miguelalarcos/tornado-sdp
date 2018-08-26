@@ -6,7 +6,7 @@ import time
 from datetime import datetime, timezone
 import jwt
 
-cars = Collection('cars')
+#cars = Collection('cars')
 
 class App(SDP):
 
@@ -48,7 +48,7 @@ class App(SDP):
 
     @sub
     def cars_of_color(self, color):
-        return cars.filter({'color': color})
+        return Collection('cars').filter({'color': color})
 
 def make_app():
     return tornado.web.Application([
