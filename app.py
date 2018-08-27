@@ -11,6 +11,10 @@ import jwt
 class App(SDP):
 
     @method
+    def add(self, a, b):
+        return a + b
+
+    @method
     def login(self, encoded_jwt):
         payload = jwt.decode(encoded_jwt, 'secret', algorithms=['HS256'])
         self.user_id = payload['user_id']
