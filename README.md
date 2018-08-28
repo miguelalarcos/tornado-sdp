@@ -1,12 +1,12 @@
+# example of use
+
+```python
 import tornado.ioloop
 import tornado.web
 from sdp import SDP, method, sub, before_insert, can_update, can_insert, Collection
 import rethinkdb as r
-import time
 from datetime import datetime, timezone
 import jwt
-
-#cars = Collection('cars')
 
 class App(SDP):
 
@@ -26,7 +26,6 @@ class App(SDP):
     def logout(self):
         self.close()
 
-    """
     @can_insert('cars')
     def is_logged(self, doc):
         return self.user_id is not None
@@ -39,7 +38,6 @@ class App(SDP):
     def created_at(self, doc):
         doc['created_at'] = datetime.now(timezone.utc)
         doc['owner'] = self.user_id
-    """
 
     @method
     def change_color(self, id, color):
@@ -68,3 +66,4 @@ if __name__ == "__main__":
     app = make_app()
     app.listen(8888)
     tornado.ioloop.IOLoop.current().start()
+```

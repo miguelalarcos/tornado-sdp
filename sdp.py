@@ -136,9 +136,11 @@ class SDP(tornado.websocket.WebSocketHandler):
             item = yield feed.next()
             print(item)
             state = item.get('state')
-            if state == 'ready' or state == 'initializing':
-                if state == 'ready':
-                    self.send_ready(sub_id)
+            #if state == 'ready' or state == 'initializing':
+            if state == 'ready':
+                self.send_ready(sub_id)
+            elif state == 'initializing':
+                self.send_initializing(sub_id, query.table)
             else:
                 if item.get('old_val') is None:
                     self.send_added(query.table, sub_id, item['new_val'])
@@ -172,6 +174,9 @@ class SDP(tornado.websocket.WebSocketHandler):
 
     def send_ready(self, sub_id):
         self.send({'msg': 'ready', 'id': sub_id})
+
+    def send_initializing(self, sub_id, table):
+        self.send({'msg': 'initializing', 'id': sub_id, 'table': table})    
 
     def send_nosub(self, sub_id, error):
         self.send({'msg': 'nosub', 'id': sub_id, 'error': error})
