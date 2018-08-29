@@ -111,11 +111,9 @@ class SDP(tornado.websocket.WebSocketHandler):
 
     def __init__(self, application, request):
         super().__init__(application, request)
-        self.conn = r.connect(host='localhost', port=28015, db='test')
-        #self.session = time.time()
-        #sessions[self.session] = self
+        #self.conn = r.connect(host='localhost', port=28015, db='test')
+        self.conn = r.connect(host='db', port=28015, db='test')
         self.registered_feeds = {}
-        #self.pending_unsubs = []
         self.queue = Queue(maxsize=10)
         self.user_id = None
         tornado.ioloop.IOLoop.current().spawn_callback(self.consumer)

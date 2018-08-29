@@ -6,8 +6,6 @@ import time
 from datetime import datetime, timezone
 import jwt
 
-#cars = Collection('cars')
-
 class App(SDP):
 
     @method
