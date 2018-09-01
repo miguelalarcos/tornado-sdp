@@ -7,7 +7,6 @@ services:
       - .:/data
     ports:
       - "8080:8080"
-      #- "28015:28015"
   tornado:
     build: .
     command: python app.py
@@ -17,3 +16,7 @@ services:
       - "8888:8888"
     depends_on:
       - db
+  #vue:
+  #  image: nginx
+  #  volumes:
+  #    - /home/casa/dev/vue-projects/websocket-tornado:/usr/share/nginx/html
