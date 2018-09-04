@@ -8,6 +8,10 @@ import jwt
 
 class App(SDP):
 
+    def __init__(self, application, request):
+        super().__init__(application, request)
+        self.feeds_with_observers = ['cars_of_color']
+
     @method
     def add(self, a, b):
         return a + b
