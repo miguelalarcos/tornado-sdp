@@ -104,6 +104,7 @@ class Collection:
             return self
         return helper
 
+
 class SDP(tornado.websocket.WebSocketHandler):
 
     def check_origin(self, origin):
@@ -111,19 +112,21 @@ class SDP(tornado.websocket.WebSocketHandler):
 
     def __init__(self, application, request):
         super().__init__(application, request)
-        #self.conn = r.connect(host='localhost', port=28015, db='test')
         self.conn = r.connect(host='db', port=28015, db='test')
         self.registered_feeds = {}
+        self.feeds_with_observers = []
         self.queue = Queue(maxsize=10)
-        self.user_id = None
+        self.user_id = 'miguel.alarcos@gmail.com' #None
+        self.remove_observer_from_item = {}
         tornado.ioloop.IOLoop.current().spawn_callback(self.consumer)
+        #tornado.ioloop.IOLoop.current().call_later(5, lambda *args: print('call later'))
 
     def check(self, attr, type):
       if not isinstance(attr, type):
         raise CheckError(attr + ' is not of type ' + str(type))
 
     @gen.coroutine
-    def feed(self, sub_id, query):
+    def feed(self, sub_id, query, name):
         #query = query.filter(~r.row.has_fields('deleted'))
         print('ini of feed')
         conn = yield self.conn
@@ -132,7 +135,7 @@ class SDP(tornado.websocket.WebSocketHandler):
         self.registered_feeds[sub_id] = feed
         while (yield feed.fetch_next()):
             item = yield feed.next()
-            print(item)
+            print('item >', item)
             state = item.get('state')
             #if state == 'ready' or state == 'initializing':
             if state == 'ready':
@@ -141,8 +144,23 @@ class SDP(tornado.websocket.WebSocketHandler):
                 self.send_initializing(sub_id, query.table)
             else:
                 if item.get('old_val') is None:
+                    if name in self.feeds_with_observers:
+                        new_item_id = item['new_val']['id']
+                        yield r.table(query.table).get(new_item_id).update({'__count': r.row['__count'].default(0) + 1}).run(conn)
+                        def helper_remove(id):
+                            def helper():
+                                @gen.coroutine
+                                def aux():
+                                    yield r.table(query.table).get(id).update({'__count': r.row['__count'] - 1}).run(conn)
+                                tornado.ioloop.IOLoop.current().spawn_callback(aux) 
+                            return helper
+                        self.remove_observer_from_item.setdefault(sub_id, {})[new_item_id] = helper_remove(new_item_id) 
                     self.send_added(query.table, sub_id, item['new_val'])
                 elif item.get('new_val') is None:
+                    old_item_id = item['old_val']['id']
+                    remove = self.remove_observer_from_item[sub_id].pop(old_item_id, None)
+                    if remove:
+                        remove() 
                     self.send_removed(query.table, sub_id, item['old_val']['id'])
                 else:
                     self.send_changed(query.table, sub_id, item['new_val'])
@@ -186,7 +204,7 @@ class SDP(tornado.websocket.WebSocketHandler):
         print('open')
 
     def on_message(self, msg):
-        print('raw ->', msg)
+        #print('raw ->', msg)
         @gen.coroutine
         def helper(msg):
             yield self.queue.put(msg)
@@ -200,14 +218,13 @@ class SDP(tornado.websocket.WebSocketHandler):
             msg = yield self.queue.get()
             if msg == 'stop':
                 return
-            # data = ejson.loads(msg) # json.loads con object_hook
             def helper(dct):
                 if '$date' in dct.keys():
                     d = datetime.utcfromtimestamp(dct['$date']/1000.0)
                     return d.replace(tzinfo=pytz.UTC)
                 return dct
             data = json.loads(msg, object_hook=helper)
-            print(data)
+            #print(data)
             try:
                 message = data['msg']
                 id = data['id']
@@ -231,10 +248,14 @@ class SDP(tornado.websocket.WebSocketHandler):
                         self.send_nosub(id, 'sub does not exist')
                     else:
                         query = getattr(self, name)(**params)
-                        tornado.ioloop.IOLoop.current().spawn_callback(self.feed, id, query)
+                        tornado.ioloop.IOLoop.current().spawn_callback(self.feed, id, query, name)
                 elif message == 'unsub':
                     feed = self.registered_feeds[id]
                     feed.close()
+                    if self.remove_observer_from_item.get(id):
+                        for remove in self.remove_observer_from_item[id].values():
+                            remove()
+                        del self.remove_observer_from_item[id]
                     del self.registered_feeds[id]
             except KeyError as e:
               self.send_error(id, str(e))
@@ -243,9 +264,11 @@ class SDP(tornado.websocket.WebSocketHandler):
 
     def on_close(self):
         print('close')
+        for k in self.remove_observer_from_item.keys():
+            for remove in self.remove_observer_from_item[k].values():
+                remove()
         for feed in self.registered_feeds.values():
             feed.close()
-        #del sessions[self.session]
 
         @gen.coroutine
         def helper(): # is it possible to call self.queue.put directly?
