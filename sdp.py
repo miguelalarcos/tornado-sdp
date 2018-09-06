@@ -13,7 +13,7 @@ import pytz
 
 r.set_loop_type("tornado")
 #https://www.rethinkdb.com/docs/async-connections/
-#sessions = {}
+
 
 methods = []
 
@@ -119,7 +119,20 @@ class SDP(tornado.websocket.WebSocketHandler):
         self.user_id = 'miguel.alarcos@gmail.com' #None
         self.remove_observer_from_item = {}
         tornado.ioloop.IOLoop.current().spawn_callback(self.consumer)
-        #tornado.ioloop.IOLoop.current().call_later(5, lambda *args: print('call later'))
+
+    def call_later(self, delay, f, *args, **kwargs):
+        return tornado.ioloop.IOLoop.current().call_later(delay, f, *args, **kwargs)
+
+    @gen.coroutine
+    def uuid(self):
+        conn = yield self.conn
+        ui = yield r.uuid().run(conn)
+        return ui    
+
+    @gen.coroutine
+    def run(self, query):
+        conn = yield self.conn
+        yield query.run(conn)
 
     def check(self, attr, type):
       if not isinstance(attr, type):
@@ -131,7 +144,8 @@ class SDP(tornado.websocket.WebSocketHandler):
         print('ini of feed')
         conn = yield self.conn
         print('connection getted')
-        feed = yield query.changes(include_initial=True, include_states=True)._filter.run(conn)
+        #feed = yield query.changes(include_initial=True, include_states=True)._filter.run(conn)
+        feed = yield query._filter.changes(include_initial=True, include_states=True).run(conn)
         self.registered_feeds[sub_id] = feed
         while (yield feed.fetch_next()):
             item = yield feed.next()
@@ -203,7 +217,11 @@ class SDP(tornado.websocket.WebSocketHandler):
     def on_open(self):
         print('open')
 
+    @gen.coroutine
     def on_message(self, msg):
+        yield self.queue.put(msg)
+
+    def on_message_(self, msg):
         #print('raw ->', msg)
         @gen.coroutine
         def helper(msg):
@@ -235,12 +253,12 @@ class SDP(tornado.websocket.WebSocketHandler):
                     if method not in methods:
                         self.send_nomethod(id, 'method does not exist')
                     else:
-                        try:
+                        #try:
                           method = getattr(self, method)
                           result = yield method(**params)
                           self.send_result(id, result)
-                        except Exception as e:
-                          self.send_error(id, str(e))
+                        #except Exception as e:
+                        #  self.send_error(id, str(e) + ':' + str(e.__traceback__))
                 elif message == 'sub':
                     name = data['name']
                     params = data['params']
@@ -315,3 +333,13 @@ class SDP(tornado.websocket.WebSocketHandler):
         raise MethodError('can not delete ' + table + ', id: ' + str(id))
       else:
         result = yield r.table(table).get(id).update({'deleted': True}).run(conn)
+
+    @gen.coroutine
+    def update_many(self, table, f, u, limit=None):
+        conn = yield self.conn
+        result = 0
+        if limit:
+            result = yield r.table(table).filter(f).limit(limit).update(lambda item: r.branch(f(item), u, {})).run(conn)
+        else:
+            result = yield r.table(table).filter(f).update(lambda item: r.branch(f(item), u, {})).run(conn)
+        return result['replaced']
